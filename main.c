@@ -1,28 +1,41 @@
-#include <stdio.h>
+#define _XOPEN_SOURCE_EXTENDED
 
+#include <curses.h>
+#include <locale.h>
+#include <stdbool.h>
+
+#include "buffer_view.h"
 #include "buffer.h"
 
+bool quit = 0;
 int main(int argc, char *argv[]) {
-	buffer *buf = create_buffer(16, 64);
-	insert(L'H', buf); 
-	insert(L'E', buf); 
-	insert(L'L', buf); 
-	insert(L'L', buf); 
-	insert(L'O', buf);
-	set_cursor(1, 0, START, buf);
-	insert(L'W', buf); 
-	insert(L'O', buf); 
-	insert(L'R', buf); 
-	insert(L'L', buf); 
-	insert(L'D', buf);
-	set_cursor(0, 0, START, buf);
-	delete_line(buf);
-	printf("cursor : %d, %d \n", buf->cursor_y, buf->cursor_x);
-	for (int i = 0; i < buf->nol; i++) {
-		for (int j = 0; j < buf->line[i].size; j++) {
-			putwchar(buf->line[i].line[j]); 
+	setlocale(LC_ALL, "");
+	initscr();
+	cbreak();
+	noecho();
+	keypad(stdscr, TRUE);
+	buffer_view *view = create_buffer_view(16, 64, stdscr);
+	
+	while(!quit) {
+		wchar_t ch = L'\0';
+		wget_wch(stdscr, &ch); // later it has to be the focused window
+		switch(ch) {
+			case 127 : // delete
+				view_delete(view);
+				break;
+			case '\n' : // enter ? 
+				view_set_cursor(1, -, CUR, view);
+				printf("shiiiet!");
+				break;
+			default: 
+				view_insert(ch, view);
 		}	
-		printf("\t %p\n", buf->line[i].line);
-	} 
+
+	}
+	view_print_buffer(view);
+	refresh();
+	getch();
+	endwin();
+
 	return 0;
 }

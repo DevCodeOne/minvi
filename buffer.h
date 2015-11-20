@@ -1,4 +1,5 @@
 #include <wchar.h>
+
 #ifndef BUFFER_HEADER
 #define BUFFER_HEADER
 
@@ -22,8 +23,7 @@ int insert(wchar_t value, buffer *buf);
 int replace(wchar_t value, buffer *buf);
 int delete(buffer *buf); 
 int delete_line(buffer *buf); 
-int insert_line(int initial_size, buffer *buf); 
-int swap_lines(int row, buffer *buf);
+int insert_line(buffer *buf); 
 int set_cursor(int row, int column, int origin, buffer *buf); 
 int is_in_bounds(int row, int column, buffer *buf); 
 

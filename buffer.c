@@ -1,6 +1,7 @@
 #include <string.h>
 #include <stdlib.h>
 #include <wchar.h>
+#include <stdio.h>
 
 #include "buffer.h"
 
@@ -134,11 +135,16 @@ int delete(buffer *buf) {
 		buf->cursor_x = line->cursor;
 }
 
+int insert_line(buffer *buf) {
+
+}
+
 int delete_line(buffer *buf) {
 	buffer_line tmp = buf->line[buf->cursor_y];
 	buffer_line *start = &buf->line[buf->cursor_y];
 	memmove(start, start+1, (buf->nol - (buf->cursor_y + 1)) * sizeof(buffer_line));
 	memcpy(&buf->line[buf->nol-1], &tmp, sizeof(buffer_line));
-	memset(buf->line[buf->nol-1].line, '\0', buf->line[buf->nol-1].cursor * sizeof(wchar_t));
+	wmemset(buf->line[buf->nol-1].line, L'\0', buf->line[buf->nol-1].cursor);
+	buf->line[buf->nol-1].cursor = 0;
 	return 0;
 }
