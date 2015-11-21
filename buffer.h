@@ -3,9 +3,13 @@
 #ifndef BUFFER_HEADER
 #define BUFFER_HEADER
 
-#define CUR 0x0
-#define START 0x1
-#define END 0x2
+#define CUR 		0x0
+#define START 		0x1
+#define END 		0x2
+#define LINE_START 	0x3
+#define LINE_END 	0x4
+#define NEXT_LINE 	0x5
+#define PREVIOUS_LINE 	0x6 
 
 typedef struct {
 	int cursor; 
@@ -16,6 +20,7 @@ typedef struct {
 typedef struct {
 	int cursor_x, cursor_y; 
 	int nol; // number of lines
+	int initial_line_size;
 	buffer_line *line;	
 } buffer;
 

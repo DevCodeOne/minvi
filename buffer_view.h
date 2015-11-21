@@ -9,17 +9,30 @@
 typedef struct { // standard functions for events like resized or something like that
 	WINDOW *win; 
 	buffer *buf;
+	int *view_line;
+	int *view_offset;
 } buffer_view;
 
-void view_print_buffer(buffer_view *view);
-int view_insert(wchar_t value, buffer_view *view); 
-int view_replace(wchar_t value, buffer_view *view); 
-int view_delete(buffer_view *view);
-int view_delete_line(buffer_view *view); 
-int view_insert_line(buffer_view *view);
-int view_set_cursor(int row, int column, int origin, buffer_view *buf); 
+// editing functions 
+int insert_view(wchar_t value, buffer_view *view); 
+int insert_line_view(buffer_view *view);
+int delete_view(buffer_view *view);
+int delete_line_view(buffer_view *view); 
+int replace_view(wchar_t value, buffer_view *view); 
+
+// screen updating functions
+void update_win(int update_start_row, buffer_view *view);
+void build_view_offsets(int start, buffer_view *view);
+
+// navigation functions
+void next_line_view(buffer_view *view); 
+void previous_line_view(buffer_view *view); 
+void next_char_view(buffer_view *view); 
+void previous_char_view(buffer_view *view);
+void align_cursor_view(buffer_view *view);
 
 buffer_view *create_buffer_view(int inital_size, int initial_line_size, WINDOW *target); 
+int resize_buffer_view(buffer_view *view);
 
 void free_buffer_view(buffer_view *view);
 

@@ -20,19 +20,17 @@ int main(int argc, char *argv[]) {
 		wchar_t ch = L'\0';
 		wget_wch(stdscr, &ch); // later it has to be the focused window
 		switch(ch) {
-			case 127 : // delete
-				view_delete(view);
+			case '\n' :
+				insert_line_view(view);
 				break;
-			case '\n' : // enter ? 
-				view_set_cursor(1, -, CUR, view);
-				printf("shiiiet!");
+			case 127 : 
+				delete_view(view);
 				break;
-			default: 
-				view_insert(ch, view);
+			default : 
+				insert_view(ch, view);
 		}	
 
 	}
-	view_print_buffer(view);
 	refresh();
 	getch();
 	endwin();
