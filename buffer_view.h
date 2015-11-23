@@ -23,12 +23,10 @@ int replace_view(wchar_t value, buffer_view *view);
 // screen updating functions
 void update_win(int update_start_row, buffer_view *view);
 void build_view_offsets(int start, buffer_view *view);
+void scroll_view(int start_row, buffer_view *view);
 
 // navigation functions
-void next_line_view(buffer_view *view); 
-void previous_line_view(buffer_view *view); 
-void next_char_view(buffer_view *view); 
-void previous_char_view(buffer_view *view);
+int move_cursor(int rows, int cols, buffer_view *view);
 void align_cursor_view(buffer_view *view);
 
 buffer_view *create_buffer_view(int inital_size, int initial_line_size, WINDOW *target); 

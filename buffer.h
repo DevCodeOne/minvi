@@ -32,6 +32,8 @@ int insert_line(buffer *buf);
 int set_cursor(int row, int column, int origin, buffer *buf); 
 int is_in_bounds(int row, int column, buffer *buf); 
 
+buffer_line *get_selected_line(buffer *buf);
+
 buffer *create_buffer(int initial_size, int initial_line_size); 
 int resize_buffer(int new_size, int initial_line_size, buffer *buf); 
 int resize_buffer_line(int new_size, buffer_line *line); 

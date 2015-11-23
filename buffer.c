@@ -109,7 +109,7 @@ int set_cursor(int row, int column, int origin, buffer *buf) {
 	}
 	if (is_in_bounds(target_y, target_x, buf)) {
 		buf->cursor_y = target_y; 
-		if (target_x > buf->line[target_x].cursor) 
+		if (target_x > buf->line[target_y].cursor) 
 			buf->cursor_x = buf->line[target_y].cursor;
 		else 
 			buf->cursor_x = target_x;
@@ -172,4 +172,8 @@ int delete_line(buffer *buf) {
 	memcpy(&buf->line[buf->nol-1], &tmp, sizeof(buffer_line));
 	buf->line[buf->nol-1].cursor = 0;
 	return 0;
+}
+
+buffer_line *get_selected_line(buffer *buf) {
+	return &buf->line[buf->cursor_y];
 }

@@ -17,6 +17,7 @@ buffer_view *create_buffer_view(int inital_size, int initial_line_size, WINDOW *
 	view->view_line = malloc(max_y * sizeof(int));
 	view->view_offset = malloc(max_y * sizeof(int));
 	build_view_offsets(0, view); 
+	update_win(0, view);
 	return view;
 }
 
@@ -101,8 +102,10 @@ int delete_view(buffer_view *view) {
 		if (ret == -1) return ret;
 		wmove(view->win, y, x-1); 
 		delch();
-	} else { // move to previous line
-		delete_line_view(view);	
+	} else { 
+		if (get_selected_line(view->buf)->cursor == 0)
+			delete_line_view(view);	
+		else; // append rest of the line to the previous line
 	}
 	return 0;
 }
@@ -118,6 +121,7 @@ int delete_line_view(buffer_view *view) {
 		if (ret == -1 || ret_set == -1) return -1;
 		set_cursor(0, 0, LINE_END, view->buf);
 		align_cursor_view(view); 
+		update_win(y, view);
 	} else { // scrolling
 	}
 }
@@ -134,8 +138,8 @@ void align_cursor_view(buffer_view *view) {
 	if (view->view_line[0] <= cursor_y && view->view_line[max_y-1] >= cursor_y) {
 		for (int i = 0; i < max_y; i++) {
 			if (cursor_y == view->view_line[i]) {
-				target_y = i;
-				if (cursor_x - view->view_offset[i] < max_x) { 
+				target_y = i; // what is with chars that are not one field long \t ?
+				if (cursor_x - view->view_offset[i] < max_x) {  
 					target_x = cursor_x - view->view_offset[i];
 					break;
 				}
@@ -146,6 +150,58 @@ void align_cursor_view(buffer_view *view) {
 	
 	}
 	wmove(view->win, target_y, target_x);
+}
+
+int move_cursor(int rows, int cols, buffer_view *view) {
+	int ret = set_cursor(rows, cols, CUR, view->buf); 
+	if (ret == -1) return -1;
+	align_cursor_view(view);
+	return 0;
+}
+
+void scroll_view(int start_row, buffer_view *view) {
+	build_view_offsets(start_row, view);
+	update_win(0, view);
+}
+
+// update terminal content fix for longer lines
+void update_win(int update_start_row, buffer_view *view) {
+	int old_pos_y, old_pos_x;
+	int max_y, max_x; 
+	int row_offset = view->view_offset[0];
+	int y, x;
+	int i, j;
+	int sel_line = view->view_offset[0];
+	cchar_t tmp;
+	
+	getmaxyx(view->win, max_y, max_x);
+	getyx(view->win, old_pos_y, old_pos_x);
+	wmove(view->win, update_start_row, 0);
+
+	for (i = update_start_row; i < max_y && view->view_line[i]< view->buf->nol; i++) {
+		buffer_line *selected_line = &view->buf->line[view->view_line[i]]; 
+		for (j = 0; j < max_x && j < selected_line->cursor; j++) {
+			tmp.attr = 0; 
+			tmp.chars[0] = selected_line->line[j + view->view_offset[i]]; // offset 
+			tmp.chars[1] = L'\0';
+			wadd_wch(view->win, &tmp);	
+		}
+		if (selected_line->cursor == 0) { // remove useless code tmp.attr usw
+			tmp.attr = 0; 
+			tmp.chars[0] = L'~'; 
+			tmp.chars[1] = L'\0'; 
+			wclrtoeol(view->win); 
+			wadd_wch(view->win, &tmp);
+		}
+		getyx(view->win, y, x);
+		wmove(view->win, y+1, 0);
+	}
+	for (; i < max_y; i++) {
+		wclrtoeol(view->win);
+		getyx(view->win, y, x); 
+		wmove(view->win, y+1, 0);
+	}
+	wmove(view->win, old_pos_y, old_pos_x);
 }
 
 void free_buffer_view(buffer_view *view) {

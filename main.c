@@ -18,13 +18,24 @@ int main(int argc, char *argv[]) {
 	
 	while(!quit) {
 		wchar_t ch = L'\0';
-		wget_wch(stdscr, &ch); // later it has to be the focused window
+		wget_wch(stdscr, &ch); // later it has to be the focused window and use constants instead of this mess so it can be changed easier
 		switch(ch) {
 			case '\n' :
 				insert_line_view(view);
 				break;
 			case 127 : 
 				delete_view(view);
+				break;
+			case KEY_UP : 
+				move_cursor(-1, 0, view); 
+				break; 
+			case KEY_DOWN : 
+				move_cursor(1, 0, view); 
+			case KEY_RIGHT : 
+				move_cursor(0, 1, view); 
+				break;
+			case KEY_LEFT : 
+				move_cursor(0, -1, view);
 				break;
 			default : 
 				insert_view(ch, view);
