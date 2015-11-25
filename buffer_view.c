@@ -17,7 +17,7 @@ buffer_view *create_buffer_view(int inital_size, int initial_line_size, WINDOW *
 	view->view_line = malloc(max_y * sizeof(int));
 	view->view_offset = malloc(max_y * sizeof(int));
 	build_view_offsets(0, view); 
-	update_win(0, view);
+	update_win(0, max_y, view);
 	return view;
 }
 
@@ -40,19 +40,26 @@ void build_view_offsets(int start, buffer_view *view) {
 	int max_y, max_x; 
 
 	getmaxyx(view->win, max_y, max_x);
-	view->view_line[0] = start;
 	int nol = view->buf->nol;
 	int line = start;
-	for (int i = 0; i < max_y; ){
-		int needed_rows = 1;
-		if (view->buf->line[line].cursor > 0)
-			needed_rows = (max_x / view->buf->line[line].cursor) + 1;
-		for (int j = 0; j < needed_rows && i < max_y; j++){
-			view->view_line[i] = line;
-			view->view_offset[i] = j * max_x;
-			i++; 
+	for (int i = 0; i < max_y; line++){
+		if ((line < nol) && (line >= 0)) {
+			int needed_rows = 1;
+			if (view->buf->line[line].cursor > 0) {  
+				needed_rows = (view->buf->line[line].cursor / max_x); // needed_rows = ganze reihen benötigt zum drucken des textes
+				if ((view->buf->line[line].cursor % max_x) != 0) // rest zeichen 
+					needed_rows++;
+			}
+			for (int j = 0; j < needed_rows && i < max_y; j++) {
+				view->view_line[i] = line;
+				view->view_offset[i] = j * max_x;
+				i++; 
+			}
+		} else {
+			view->view_line[i] = line; 
+			view->view_offset[i] = 0;
+			i++;
 		}
-		line++;
 	}
 }
 
@@ -78,21 +85,22 @@ int insert_view(wchar_t value, buffer_view *view) {
 int insert_line_view(buffer_view *view) {
 	int y, x; 
 	int max_y, max_x; 
+	
 	getyx(view->win, y, x);
 	getmaxyx(view->win, max_y, max_x); 
-	if (y+1 < max_y) {
-		int ret_set = set_cursor(1, 0, CUR, view->buf);
-		int ret = insert_line(view->buf);
-		if (ret == -1 || ret_set == -1) return -1;
-		wmove(view->win, y+1, 0);
-		// update_win(y+1, view);
-	} else { // scrolling later
-		
-	}
+
+	int ret_set = set_cursor(0, 0, NEXT_LINE, view->buf);
+	int ret = insert_line(view->buf);
+
+	if (ret == -1 || ret_set == -1) return -1;
+
+	build_view_offsets(view->view_line[0], view); // optimize this not necessary to rebuild all offsets
+	align_cursor_view(view);
+	update_win(y-1, max_y, view);
 	return 0;
 }
 
-int delete_view(buffer_view *view) {
+int delete_view(buffer_view *view) { // remember lines that are not exaclty one line long so rebuild
 	int y, x; 
 	int max_y, max_x; 
 	getyx(view->win, y, x); 
@@ -104,8 +112,20 @@ int delete_view(buffer_view *view) {
 		delch();
 	} else { 
 		if (get_selected_line(view->buf)->cursor == 0)
-			delete_line_view(view);	
-		else; // append rest of the line to the previous line
+			return delete_line_view(view);	
+		else { // append rest of the line to the previous line
+			buffer_line *source = get_selected_line(view->buf); 
+			int ret_set = set_cursor(0, 0, PREVIOUS_LINE, view->buf);
+
+			if (ret_set == -1) return ret_set;
+
+			int ret = append_line(source, view->buf); 
+
+			if (ret == -1) return ret;
+			
+			set_cursor(0, 0, NEXT_LINE, view->buf);
+			return delete_line_view(view);
+		}
 	}
 	return 0;
 }
@@ -113,25 +133,29 @@ int delete_view(buffer_view *view) {
 int delete_line_view(buffer_view *view) {
 	int y, x; 
 	int max_y, max_x; 
+
 	getyx(view->win, y, x); 
 	getmaxyx(view->win, max_y, max_x); 
-	if (y-1 >= 0) { 
-		int ret = delete_line(view->buf); 
-		int ret_set = set_cursor(0, 0, PREVIOUS_LINE, view->buf);
-		if (ret == -1 || ret_set == -1) return -1;
-		set_cursor(0, 0, LINE_END, view->buf);
-		align_cursor_view(view); 
-		update_win(y, view);
-	} else { // scrolling
-	}
+
+	int ret = delete_line(view->buf); 
+	int ret_set = set_cursor(0, 0, PREVIOUS_LINE, view->buf);
+
+	if (ret == -1 || ret_set == -1) return -1;
+
+	set_cursor(0, 0, LINE_END, view->buf);
+	build_view_offsets(view->view_line[0], view);
+	align_cursor_view(view); 
+	update_win(y-1, max_y, view);
 }
 
 void align_cursor_view(buffer_view *view) {
 	int cursor_y, cursor_x; 
 	int max_y, max_x;
 	int target_y, target_x; 
+	int y, x;
 
 	getmaxyx(view->win, max_y, max_x); 
+	getyx(view->win, y, x);
 	cursor_y = view->buf->cursor_y; 
 	cursor_x = view->buf->cursor_x; 
 	// cursor_y is in view no scrolling required
@@ -145,11 +169,20 @@ void align_cursor_view(buffer_view *view) {
 				}
 			}
 		}
-		
-	} else { // scroll and call align_cursor_view again
-	
+		wmove(view->win, target_y, target_x);
+	} else { // TODO optimize 
+		int row = 0;
+		if (cursor_y < view->view_line[0]) {
+			row = view->view_line[0] - 1; 
+		} else {
+			row = view->view_line[0] + 1;
+		}
+
+		if (row < 0) row = 0;
+
+		scroll_view(row, view);
+		align_cursor_view(view);
 	}
-	wmove(view->win, target_y, target_x);
 }
 
 int move_cursor(int rows, int cols, buffer_view *view) {
@@ -160,45 +193,46 @@ int move_cursor(int rows, int cols, buffer_view *view) {
 }
 
 void scroll_view(int start_row, buffer_view *view) {
+	int max_y, max_x; 
+	getmaxyx(view->win, max_y, max_x);
 	build_view_offsets(start_row, view);
-	update_win(0, view);
+	update_win(0, max_y, view);
 }
 
-// update terminal content fix for longer lines
-void update_win(int update_start_row, buffer_view *view) {
+// update terminal content fix for longer lines cleanup
+void update_win(int update_start_row, int update_end_row, buffer_view *view) {
 	int old_pos_y, old_pos_x;
 	int max_y, max_x; 
-	int row_offset = view->view_offset[0];
 	int y, x;
 	int i, j;
-	int sel_line = view->view_offset[0];
 	cchar_t tmp;
+	tmp.chars[1] = L'\0';
+	tmp.attr = 0;
+	if (update_start_row < 0) update_start_row = 0;
 	
 	getmaxyx(view->win, max_y, max_x);
 	getyx(view->win, old_pos_y, old_pos_x);
 	wmove(view->win, update_start_row, 0);
 
-	for (i = update_start_row; i < max_y && view->view_line[i]< view->buf->nol; i++) {
-		buffer_line *selected_line = &view->buf->line[view->view_line[i]]; 
-		for (j = 0; j < max_x && j < selected_line->cursor; j++) {
-			tmp.attr = 0; 
-			tmp.chars[0] = selected_line->line[j + view->view_offset[i]]; // offset 
-			tmp.chars[1] = L'\0';
-			wadd_wch(view->win, &tmp);	
-		}
-		if (selected_line->cursor == 0) { // remove useless code tmp.attr usw
-			tmp.attr = 0; 
-			tmp.chars[0] = L'~'; 
-			tmp.chars[1] = L'\0'; 
+	for (i = update_start_row; i < max_y && i < update_end_row; i++) {
+		if (view->view_line[i] < view->buf->nol) {
+			buffer_line *selected_line = &view->buf->line[view->view_line[i]]; 
+			wclrtoeol(view->win);
+			for (j = 0; j < max_x && j < selected_line->cursor; j++) {
+				tmp.chars[0] = selected_line->line[j + view->view_offset[i]]; 
+				wadd_wch(view->win, &tmp);	
+			}
+			if (selected_line->cursor == 0) { 
+				tmp.chars[0] = L'~'; 
+				wclrtoeol(view->win); 
+				wadd_wch(view->win, &tmp);
+			}
+		} else {
 			wclrtoeol(view->win); 
+			tmp.chars[0] = L'~';
 			wadd_wch(view->win, &tmp);
 		}
 		getyx(view->win, y, x);
-		wmove(view->win, y+1, 0);
-	}
-	for (; i < max_y; i++) {
-		wclrtoeol(view->win);
-		getyx(view->win, y, x); 
 		wmove(view->win, y+1, 0);
 	}
 	wmove(view->win, old_pos_y, old_pos_x);

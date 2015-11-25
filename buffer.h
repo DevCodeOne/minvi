@@ -25,6 +25,7 @@ typedef struct {
 } buffer;
 
 int insert(wchar_t value, buffer *buf); 
+int append_line(buffer_line *line, buffer *buf);
 int replace(wchar_t value, buffer *buf);
 int delete(buffer *buf); 
 int delete_line(buffer *buf); 

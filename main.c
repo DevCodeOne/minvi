@@ -31,6 +31,7 @@ int main(int argc, char *argv[]) {
 				break; 
 			case KEY_DOWN : 
 				move_cursor(1, 0, view); 
+				break;
 			case KEY_RIGHT : 
 				move_cursor(0, 1, view); 
 				break;
@@ -40,9 +41,8 @@ int main(int argc, char *argv[]) {
 			default : 
 				insert_view(ch, view);
 		}	
-
+		refresh();
 	}
-	refresh();
 	getch();
 	endwin();
 

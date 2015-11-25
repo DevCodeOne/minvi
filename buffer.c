@@ -153,14 +153,14 @@ int delete(buffer *buf) {
 
 int insert_line(buffer *buf) {
 	int old_nol = buf->nol; // if resized the other lines dont have to be moved they are empty
-	if (buf->line[buf->nol-1].cursor != 0) { // line is not empty resize buffer if possible
+	if (buf->line[buf->nol-1].cursor != 0 || buf->cursor_y >= buf->nol-1) { 
 		int ret = resize_buffer(buf->nol * 2, buf->initial_line_size, buf); 
 		if (ret == -1) return ret; 
 	}
 	buffer_line tmp = buf->line[old_nol-1];
 	buffer_line *start = &buf->line[buf->cursor_y];
 	memmove(start+1, start, (old_nol - (buf->cursor_y + 1)) * sizeof(buffer_line)); 
-	memcpy(&buf->line[old_nol-1], &tmp, sizeof(buffer_line));
+	memcpy(start, &tmp, sizeof(buffer_line));
 	return 0;
 }
 
@@ -171,6 +171,18 @@ int delete_line(buffer *buf) {
 	memmove(start, start+1, (buf->nol - (buf->cursor_y + 1)) * sizeof(buffer_line));
 	memcpy(&buf->line[buf->nol-1], &tmp, sizeof(buffer_line));
 	buf->line[buf->nol-1].cursor = 0;
+	return 0;
+}
+
+int append_line(buffer_line *line, buffer *buf) {
+	buffer_line *selected_line = get_selected_line(buf);
+	int required_size = selected_line->cursor + line->cursor;
+	if (required_size > selected_line->size) {
+		int ret = resize_buffer_line(required_size * 2, selected_line);
+		if (ret == -1) return ret;
+	}
+	wmemcpy(&(selected_line->line[selected_line->cursor]), line->line, line->cursor);
+	selected_line->cursor += line->cursor;
 	return 0;
 }
 

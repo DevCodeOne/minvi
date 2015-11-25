@@ -21,7 +21,7 @@ int delete_line_view(buffer_view *view);
 int replace_view(wchar_t value, buffer_view *view); 
 
 // screen updating functions
-void update_win(int update_start_row, buffer_view *view);
+void update_win(int update_start_row, int update_end_row, buffer_view *view);
 void build_view_offsets(int start, buffer_view *view);
 void scroll_view(int start_row, buffer_view *view);
 
