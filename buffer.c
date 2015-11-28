@@ -78,9 +78,16 @@ void free_buffer(buffer *buf) {
 int is_in_bounds(int row, int column, buffer *buf) {
 	if (row > buf->nol || row < 0) 
 		return 0; 
-	if (column >= buf->line[row].size || column < 0) 
+	if (column >= buf->line[row].cursor || column < 0) 
 		return 0;
 	return 1;
+}
+
+void clip(int *row, int *column, buffer *buf) {
+	if (*row < 0) *row = 0; 
+	if (*row > buf->nol) *row = buf->nol-1; 
+	if (*column > buf->line[*row].cursor) *column = buf->line[*row].cursor;
+	if (*column < 0) *column = 0;
 }
 
 int set_cursor(int row, int column, int origin, buffer *buf) {
@@ -109,25 +116,26 @@ int set_cursor(int row, int column, int origin, buffer *buf) {
 	}
 	if (is_in_bounds(target_y, target_x, buf)) {
 		buf->cursor_y = target_y; 
-		if (target_x > buf->line[target_y].cursor) 
-			buf->cursor_x = buf->line[target_y].cursor;
-		else 
-			buf->cursor_x = target_x;
-		return 0;
-	} 
-	// invalid cursor location 
-	return -1;
+		buf->cursor_x = target_x;
+		return 0; 
+	} else { 
+		// invalid cursor location -> clipped
+		clip(&target_y, &target_x, buf);
+		buf->cursor_y = target_y; 
+		buf->cursor_x = target_x;
+		return 1;
+	}
 }
 
 int insert(wchar_t value, buffer *buf) {
 	buffer_line *line = &buf->line[buf->cursor_y];
-	if (line->size - line->cursor < 2) {
+	if (line->size - line->cursor < 4) {
 		int ret = resize_buffer_line(line->size * 2, line);
 		if (ret == -1) return ret;
 	}
 	wchar_t *start = line->line + buf->cursor_x;
 	if (buf->cursor_x+1 < line->cursor) // no characters behind this one
-		wmemmove(start+1, start, line->cursor - (buf->cursor_x + 1)); 
+		wmemmove(start+1, start, line->cursor - (buf->cursor_x)); 
 	line->line[buf->cursor_x++] = value;
 	line->cursor++;
 	return 0;
@@ -145,7 +153,7 @@ int delete(buffer *buf) {
 	line->cursor--;
 	wchar_t *start = line->line + buf->cursor_x;
 	if (line->cursor > buf->cursor_x)
-		wmemmove(start, start+1, line->cursor - (buf->cursor_x - 1)); 
+		wmemmove(start, start+1, line->cursor - (buf->cursor_x)); 
 	if (buf->cursor_x > line->cursor)  
 		buf->cursor_x = line->cursor;
 	return 0;
@@ -174,16 +182,30 @@ int delete_line(buffer *buf) {
 	return 0;
 }
 
-int append_line(buffer_line *line, buffer *buf) {
+int append_line(buffer_line *src, buffer *buf) { // reuse copy_line
 	buffer_line *selected_line = get_selected_line(buf);
-	int required_size = selected_line->cursor + line->cursor;
-	if (required_size > selected_line->size) {
-		int ret = resize_buffer_line(required_size * 2, selected_line);
+	return copy_line(selected_line, src, selected_line->cursor, 0, src->cursor);
+}
+
+int copy_line(buffer_line *dst, buffer_line *src, int dst_offset, int src_offset, int len) {
+	if (src->size < src_offset + len) return -1; 
+	if (dst->size < dst_offset + len) { 
+		int ret = resize_buffer_line(dst->size * 2 + (dst_offset + len), dst);
 		if (ret == -1) return ret;
 	}
-	wmemcpy(&(selected_line->line[selected_line->cursor]), line->line, line->cursor);
-	selected_line->cursor += line->cursor;
+	wmemcpy(&(dst->line[dst_offset]), &(src->line[src_offset]), len);
+	dst->cursor += len;
 	return 0;
+}
+
+int delete_from_to(buffer_line *line, int off, int len) {
+	if (line->cursor < off + len) 
+		return -1; // nothing to remove
+	wchar_t *start = line->line + off;
+	wmemmove(start, start+len, line->cursor - len); 
+	line->cursor -= len;
+	return 0;
+
 }
 
 buffer_line *get_selected_line(buffer *buf) {

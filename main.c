@@ -14,7 +14,8 @@ int main(int argc, char *argv[]) {
 	cbreak();
 	noecho();
 	keypad(stdscr, TRUE);
-	buffer_view *view = create_buffer_view(16, 64, stdscr);
+	set_tabsize(3); // init somewhere different later
+	buffer_view *view = create_buffer_view(16, 8, stdscr);
 	
 	while(!quit) {
 		wchar_t ch = L'\0';

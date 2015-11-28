@@ -33,6 +33,9 @@ int insert_line(buffer *buf);
 int set_cursor(int row, int column, int origin, buffer *buf); 
 int is_in_bounds(int row, int column, buffer *buf); 
 
+int copy_line(buffer_line *dst, buffer_line *src, int dst_offset, int src_offset, int len); 
+int delete_from_to(buffer_line *line, int off, int len);
+
 buffer_line *get_selected_line(buffer *buf);
 
 buffer *create_buffer(int initial_size, int initial_line_size); 

@@ -42,14 +42,12 @@ void build_view_offsets(int start, buffer_view *view) {
 	getmaxyx(view->win, max_y, max_x);
 	int nol = view->buf->nol;
 	int line = start;
+
+	max_x--;
 	for (int i = 0; i < max_y; line++){
 		if ((line < nol) && (line >= 0)) {
-			int needed_rows = 1;
-			if (view->buf->line[line].cursor > 0) {  
-				needed_rows = (view->buf->line[line].cursor / max_x); // needed_rows = ganze reihen benötigt zum drucken des textes
-				if ((view->buf->line[line].cursor % max_x) != 0) // rest zeichen 
-					needed_rows++;
-			}
+			int needed_rows = calculate_needed_rows(&view->buf->line[line], view);
+
 			for (int j = 0; j < needed_rows && i < max_y; j++) {
 				view->view_line[i] = line;
 				view->view_offset[i] = j * max_x;
@@ -66,19 +64,22 @@ void build_view_offsets(int start, buffer_view *view) {
 int insert_view(wchar_t value, buffer_view *view) {
 	int y, x;
 	int max_y, max_x;
+	char update_complete_screen = 0;
+
 	getyx(view->win, y, x); 
 	getmaxyx(view->win, max_y, max_x);
-	if (x+1 < max_x) {
-		int ret = insert(value, view->buf);
-		if (ret == -1) return ret;
-		cchar_t tmp; 
-		tmp.attr = 0; 
-		tmp.chars[0] = value; 
-		tmp.chars[1] = L'\0';
-		wadd_wch(view->win, &tmp);	
-	} else { // next row is still this line insert the line number in next view_line usw
 
+	max_x--;
+	int ret = insert(value, view->buf);
+	if (ret == -1) return ret;
+
+	if (x+2 >= max_x) { // next row is stil this line 
+		update_complete_screen = 1;  	
+		build_view_offsets(view->view_offset[0], view);
 	}
+		
+	align_cursor_view(view);
+	update_win(update_complete_screen ? 0 : y, max_y, view); // efficient updating pls
 	return 0;
 }
 
@@ -89,10 +90,17 @@ int insert_line_view(buffer_view *view) {
 	getyx(view->win, y, x);
 	getmaxyx(view->win, max_y, max_x); 
 
-	int ret_set = set_cursor(0, 0, NEXT_LINE, view->buf);
+	int old_cursor_x = view->buf->cursor_x;
+	// insert rest of the previous line in the next line
+	set_cursor(0, 0, NEXT_LINE, view->buf);
 	int ret = insert_line(view->buf);
 
-	if (ret == -1 || ret_set == -1) return -1;
+	if (ret == -1) return -1;
+	
+	buffer_line *previous_line = &view->buf->line[view->buf->cursor_y-1];
+	buffer_line *sel_line = get_selected_line(view->buf);
+	copy_line(sel_line, previous_line, 0, old_cursor_x, previous_line->cursor - old_cursor_x); 
+	delete_from_to(previous_line, old_cursor_x, previous_line->cursor - old_cursor_x);
 
 	build_view_offsets(view->view_line[0], view); // optimize this not necessary to rebuild all offsets
 	align_cursor_view(view);
@@ -106,18 +114,18 @@ int delete_view(buffer_view *view) { // remember lines that are not exaclty one 
 	getyx(view->win, y, x); 
 	getmaxyx(view->win, max_y, max_x); 
 	if (x-1 >= 0) {
+		set_cursor(0, -1, CUR, view->buf);
 		int ret = delete(view->buf); 
-		if (ret == -1) return ret;
-		wmove(view->win, y, x-1); 
-		delch();
+		if (ret == -1) return -1;
+		build_view_offsets(view->view_line[0], view); 
+		align_cursor_view(view);
+		update_win(y-1, max_y, view);
 	} else { 
 		if (get_selected_line(view->buf)->cursor == 0)
 			return delete_line_view(view);	
 		else { // append rest of the line to the previous line
 			buffer_line *source = get_selected_line(view->buf); 
-			int ret_set = set_cursor(0, 0, PREVIOUS_LINE, view->buf);
-
-			if (ret_set == -1) return ret_set;
+			set_cursor(0, 0, PREVIOUS_LINE, view->buf);
 
 			int ret = append_line(source, view->buf); 
 
@@ -138,9 +146,9 @@ int delete_line_view(buffer_view *view) {
 	getmaxyx(view->win, max_y, max_x); 
 
 	int ret = delete_line(view->buf); 
-	int ret_set = set_cursor(0, 0, PREVIOUS_LINE, view->buf);
+	set_cursor(0, 0, PREVIOUS_LINE, view->buf);
 
-	if (ret == -1 || ret_set == -1) return -1;
+	if (ret == -1) return -1;
 
 	set_cursor(0, 0, LINE_END, view->buf);
 	build_view_offsets(view->view_line[0], view);
@@ -159,14 +167,25 @@ void align_cursor_view(buffer_view *view) {
 	cursor_y = view->buf->cursor_y; 
 	cursor_x = view->buf->cursor_x; 
 	// cursor_y is in view no scrolling required
+	max_x--;
 	if (view->view_line[0] <= cursor_y && view->view_line[max_y-1] >= cursor_y) {
 		for (int i = 0; i < max_y; i++) {
 			if (cursor_y == view->view_line[i]) {
-				target_y = i; // what is with chars that are not one field long \t ?
-				if (cursor_x - view->view_offset[i] < max_x) {  
-					target_x = cursor_x - view->view_offset[i];
-					break;
+				target_y = i; 
+				buffer_line *line = &view->buf->line[view->view_line[i]];
+
+				int pos = view->view_offset[i];
+				target_x = 0; 
+				for (int j = 0; j < max_x && pos < cursor_x; j++) {
+					switch(line->line[pos++]) {
+						case L'\t' :
+							target_x += TAB_WIDTH; 
+							break;
+						default : 
+							target_x++;
+					}
 				}
+				if (pos == cursor_x) break;
 			}
 		}
 		wmove(view->win, target_y, target_x);
@@ -214,17 +233,28 @@ void update_win(int update_start_row, int update_end_row, buffer_view *view) {
 	getyx(view->win, old_pos_y, old_pos_x);
 	wmove(view->win, update_start_row, 0);
 
+	max_x--; // otherwise the placement of the cursor and some other things is fucked up
 	for (i = update_start_row; i < max_y && i < update_end_row; i++) {
 		if (view->view_line[i] < view->buf->nol) {
 			buffer_line *selected_line = &view->buf->line[view->view_line[i]]; 
+			int off = view->view_offset[i];
 			wclrtoeol(view->win);
-			for (j = 0; j < max_x && j < selected_line->cursor; j++) {
-				tmp.chars[0] = selected_line->line[j + view->view_offset[i]]; 
-				wadd_wch(view->win, &tmp);	
+			for (j = 0; j < max_x && j+off < selected_line->cursor; j++) {
+				wchar_t c = selected_line->line[j + off];
+				switch(c) {
+					case L'\t' : 
+						tmp.chars[0] = L' ';
+						for (int k = 0; k < TAB_WIDTH; k++) 
+							wadd_wch(view->win, &tmp);
+						break; 
+					default : 
+						tmp.chars[0] = c; 
+						wadd_wch(view->win, &tmp);	
+				}
 			}
+
 			if (selected_line->cursor == 0) { 
 				tmp.chars[0] = L'~'; 
-				wclrtoeol(view->win); 
 				wadd_wch(view->win, &tmp);
 			}
 		} else {
@@ -245,4 +275,28 @@ void free_buffer_view(buffer_view *view) {
 		if (view->view_offset != NULL) free(view->view_offset);
 		free(view);
 	}
+}
+
+int calculate_needed_rows(buffer_line *line, buffer_view *view) {
+	int max_y, max_x;
+	int columns = 0; 
+	int needed_rows = 1;
+
+	getmaxyx(view->win, max_y, max_x); 
+
+	max_x--;
+
+	for (int i = 0; i < line->cursor; i++) {
+		switch(line->line[i]) {
+			case L'\t' : 
+				columns += 3;
+				break;
+			default : 
+				columns++;
+		}
+	}
+	if (columns >= max_x) {
+		needed_rows = (columns / max_x) + ((!(columns % max_x == 0)) ? 1 : 0);
+	}
+	return needed_rows;
 }
