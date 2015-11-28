@@ -22,18 +22,24 @@ buffer_view *create_buffer_view(int inital_size, int initial_line_size, WINDOW *
 }
 
 int resize_buffer_view(buffer_view *view) {
-	int y, x; 
-	int *new_view_line = realloc(view->view_line, y * sizeof(int)); 
-	int *new_view_offset = realloc(view->view_offset, y * sizeof(int)); 
+	int max_y, max_x;
+
+	getmaxyx(view->win, max_y, max_x);
+
+	int *new_view_line = realloc(view->view_line, max_y * sizeof(int)); 
+	int *new_view_offset = realloc(view->view_offset, max_y * sizeof(int)); 
+
 	if (new_view_line == NULL || new_view_offset == NULL) {
 		if (new_view_line != NULL) free(new_view_line); 
 		if (new_view_offset != NULL) free(new_view_offset);
 		return -1;
 	}
+
 	view->view_line = new_view_line; 
 	view->view_offset = new_view_offset;
 	build_view_offsets(view->view_line[0], view); 
-	// redraw window
+	update_win(0, max_y, view); 
+	return 0;
 }
 
 void build_view_offsets(int start, buffer_view *view) {
@@ -46,12 +52,22 @@ void build_view_offsets(int start, buffer_view *view) {
 	max_x--;
 	for (int i = 0; i < max_y; line++){
 		if ((line < nol) && (line >= 0)) {
-			int needed_rows = calculate_needed_rows(&view->buf->line[line], view);
+			buffer_line *selected_line = &view->buf->line[line];
+			int columns = 0;
+			view->view_offset[i] = 0; 
+			view->view_line[i] = line;
+			i++;
 
-			for (int j = 0; j < needed_rows && i < max_y; j++) {
-				view->view_line[i] = line;
-				view->view_offset[i] = j * max_x;
-				i++; 
+			for (int j = 0; j < selected_line->cursor; j++) {
+				int char_width = get_charwidth(selected_line->line[j]);
+
+				columns += char_width;
+				if (columns > max_x) {
+					columns = 0; 
+					view->view_offset[i] = j--; // one char too much jump back
+					view->view_line[i] = line;
+					i++;
+				}
 			}
 		} else {
 			view->view_line[i] = line; 
@@ -61,7 +77,7 @@ void build_view_offsets(int start, buffer_view *view) {
 	}
 }
 
-int insert_view(wchar_t value, buffer_view *view) {
+int insert_view(wchar_t value, buffer_view *view) { // bug with tabs not jumping to next line when max_x is reached
 	int y, x;
 	int max_y, max_x;
 	char update_complete_screen = 0;
@@ -73,7 +89,7 @@ int insert_view(wchar_t value, buffer_view *view) {
 	int ret = insert(value, view->buf);
 	if (ret == -1) return ret;
 
-	if (x+2 >= max_x) { // next row is stil this line 
+	if (x+1 >= max_x) { // next row is stil this line 
 		update_complete_screen = 1;  	
 		build_view_offsets(view->view_offset[0], view);
 	}
@@ -91,32 +107,37 @@ int insert_line_view(buffer_view *view) {
 	getmaxyx(view->win, max_y, max_x); 
 
 	int old_cursor_x = view->buf->cursor_x;
+	buffer_line *previous_line = get_selected_line(view->buf);	
+
 	// insert rest of the previous line in the next line
 	set_cursor(0, 0, NEXT_LINE, view->buf);
-	int ret = insert_line(view->buf);
-
+	
+	int ret = insert_line(view->buf); 
+	
 	if (ret == -1) return -1;
 	
-	buffer_line *previous_line = &view->buf->line[view->buf->cursor_y-1];
 	buffer_line *sel_line = get_selected_line(view->buf);
 	copy_line(sel_line, previous_line, 0, old_cursor_x, previous_line->cursor - old_cursor_x); 
-	delete_from_to(previous_line, old_cursor_x, previous_line->cursor - old_cursor_x);
-
+	delete_range(previous_line, old_cursor_x, previous_line->cursor - old_cursor_x); 
+	
 	build_view_offsets(view->view_line[0], view); // optimize this not necessary to rebuild all offsets
 	align_cursor_view(view);
 	update_win(y-1, max_y, view);
 	return 0;
 }
 
-int delete_view(buffer_view *view) { // remember lines that are not exaclty one line long so rebuild
+int delete_view(buffer_view *view) { // fix just because x is at 0 doesnt mean start of the line
 	int y, x; 
 	int max_y, max_x; 
+	
 	getyx(view->win, y, x); 
 	getmaxyx(view->win, max_y, max_x); 
 	if (x-1 >= 0) {
 		set_cursor(0, -1, CUR, view->buf);
+
 		int ret = delete(view->buf); 
 		if (ret == -1) return -1;
+
 		build_view_offsets(view->view_line[0], view); 
 		align_cursor_view(view);
 		update_win(y-1, max_y, view);
@@ -156,7 +177,7 @@ int delete_line_view(buffer_view *view) {
 	update_win(y-1, max_y, view);
 }
 
-void align_cursor_view(buffer_view *view) {
+void align_cursor_view(buffer_view *view) { // bug relating tabs is here
 	int cursor_y, cursor_x; 
 	int max_y, max_x;
 	int target_y, target_x; 
@@ -166,8 +187,9 @@ void align_cursor_view(buffer_view *view) {
 	getyx(view->win, y, x);
 	cursor_y = view->buf->cursor_y; 
 	cursor_x = view->buf->cursor_x; 
-	// cursor_y is in view no scrolling required
+
 	max_x--;
+
 	if (view->view_line[0] <= cursor_y && view->view_line[max_y-1] >= cursor_y) {
 		for (int i = 0; i < max_y; i++) {
 			if (cursor_y == view->view_line[i]) {
@@ -175,21 +197,28 @@ void align_cursor_view(buffer_view *view) {
 				buffer_line *line = &view->buf->line[view->view_line[i]];
 
 				int pos = view->view_offset[i];
-				target_x = 0; 
-				for (int j = 0; j < max_x && pos < cursor_x; j++) {
-					switch(line->line[pos++]) {
+
+				for (target_x = 0; pos < cursor_x; ){
+					int char_width = 0;
+					switch(line->line[pos]) {
 						case L'\t' :
-							target_x += TAB_WIDTH; 
+							char_width = TAB_WIDTH; 
 							break;
 						default : 
-							target_x++;
+						 	char_width = 1;	
+					}
+					if (target_x + char_width >= max_x) {
+						break;
+					} else {
+						target_x += char_width; 
+						pos++;
 					}
 				}
 				if (pos == cursor_x) break;
 			}
 		}
 		wmove(view->win, target_y, target_x);
-	} else { // TODO optimize 
+	} else { // TODO optimize scroll more than one line 
 		int row = 0;
 		if (cursor_y < view->view_line[0]) {
 			row = view->view_line[0] - 1; 
@@ -239,17 +268,19 @@ void update_win(int update_start_row, int update_end_row, buffer_view *view) {
 			buffer_line *selected_line = &view->buf->line[view->view_line[i]]; 
 			int off = view->view_offset[i];
 			wclrtoeol(view->win);
-			for (j = 0; j < max_x && j+off < selected_line->cursor; j++) {
-				wchar_t c = selected_line->line[j + off];
+			for (j = 0; j < max_x && off < selected_line->cursor; ){
+				wchar_t c = selected_line->line[off++];
 				switch(c) {
 					case L'\t' : 
 						tmp.chars[0] = L' ';
 						for (int k = 0; k < TAB_WIDTH; k++) 
 							wadd_wch(view->win, &tmp);
+						j += TAB_WIDTH;
 						break; 
 					default : 
 						tmp.chars[0] = c; 
 						wadd_wch(view->win, &tmp);	
+						j++;
 				}
 			}
 
@@ -277,26 +308,44 @@ void free_buffer_view(buffer_view *view) {
 	}
 }
 
-int calculate_needed_rows(buffer_line *line, buffer_view *view) {
-	int max_y, max_x;
-	int columns = 0; 
-	int needed_rows = 1;
+int calculate_needed_rows(buffer_line *line, buffer_view *view) { // maybe return struct with offsets
+	int columns = calculate_needed_columns(line); 
+	
+	return calculate_needed_rows_from_columns(columns, view);
+}
+
+int calculate_needed_rows_from_columns(int columns, buffer_view *view) {
+	int max_y, max_x;	
 
 	getmaxyx(view->win, max_y, max_x); 
-
 	max_x--;
 
+	if (columns < max_x) 
+		return 1;
+	return (columns / max_x) + ((!(columns % max_x == 0)) ? 1 : 0);
+}
+
+int calculate_needed_columns(buffer_line *line) {
+	int columns = 0;
 	for (int i = 0; i < line->cursor; i++) {
 		switch(line->line[i]) {
 			case L'\t' : 
-				columns += 3;
+				columns += TAB_WIDTH;
 				break;
 			default : 
 				columns++;
 		}
+
 	}
-	if (columns >= max_x) {
-		needed_rows = (columns / max_x) + ((!(columns % max_x == 0)) ? 1 : 0);
+	return columns;
+}
+
+int get_charwidth(wchar_t value) {
+	switch(value) {
+		case L'\t' : 
+			return TAB_WIDTH; 
+			break; // unnecessary
+		default : 
+			return 1;
 	}
-	return needed_rows;
 }

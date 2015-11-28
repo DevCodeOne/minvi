@@ -159,16 +159,16 @@ int delete(buffer *buf) {
 	return 0;
 }
 
-int insert_line(buffer *buf) {
+int insert_line(buffer *buf) { // error here
 	int old_nol = buf->nol; // if resized the other lines dont have to be moved they are empty
 	if (buf->line[buf->nol-1].cursor != 0 || buf->cursor_y >= buf->nol-1) { 
 		int ret = resize_buffer(buf->nol * 2, buf->initial_line_size, buf); 
 		if (ret == -1) return ret; 
 	}
-	buffer_line tmp = buf->line[old_nol-1];
+	buffer_line tmp = buf->line[buf->nol-1];
 	buffer_line *start = &buf->line[buf->cursor_y];
-	memmove(start+1, start, (old_nol - (buf->cursor_y + 1)) * sizeof(buffer_line)); 
-	memcpy(start, &tmp, sizeof(buffer_line));
+	memmove(start + 1, start, (old_nol - (buf->cursor_y + 1)) * sizeof(buffer_line)); 
+	buf->line[buf->cursor_y] = tmp;	
 	return 0;
 }
 
@@ -190,19 +190,19 @@ int append_line(buffer_line *src, buffer *buf) { // reuse copy_line
 int copy_line(buffer_line *dst, buffer_line *src, int dst_offset, int src_offset, int len) {
 	if (src->size < src_offset + len) return -1; 
 	if (dst->size < dst_offset + len) { 
-		int ret = resize_buffer_line(dst->size * 2 + (dst_offset + len), dst);
+		int ret = resize_buffer_line(dst->size + (len * 2), dst);
 		if (ret == -1) return ret;
 	}
-	wmemcpy(&(dst->line[dst_offset]), &(src->line[src_offset]), len);
+	wmemcpy(&dst->line[dst_offset], &src->line[src_offset], len);
 	dst->cursor += len;
 	return 0;
 }
 
-int delete_from_to(buffer_line *line, int off, int len) {
+int delete_range(buffer_line *line, int off, int len) {
 	if (line->cursor < off + len) 
 		return -1; // nothing to remove
-	wchar_t *start = line->line + off;
-	wmemmove(start, start+len, line->cursor - len); 
+	wchar_t *start = &line->line[off];
+	wmemmove(start, start+len, len); 
 	line->cursor -= len;
 	return 0;
 
