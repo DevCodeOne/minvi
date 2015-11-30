@@ -5,6 +5,7 @@
 #include <stdbool.h>
 
 #include "buffer_view.h"
+#include "edit_view.h"
 #include "buffer.h"
 
 bool quit = 0;
@@ -15,36 +16,16 @@ int main(int argc, char *argv[]) {
 	noecho();
 	keypad(stdscr, TRUE);
 	set_tabsize(3); // init somewhere different later
-	buffer_view *view = create_buffer_view(16, 8, stdscr);
+	edit_view *view = create_edit_view(16, 8);
 	
 	while(!quit) {
 		wchar_t ch = L'\0';
-		wget_wch(stdscr, &ch); // later it has to be the focused window and use constants instead of this mess so it can be changed easier
-		switch(ch) {
-			case '\n' :
-				insert_line_view(view);
-				break;
-			case 127 : 
-				delete_view(view);
-				break;
-			case KEY_UP : 
-				move_cursor(-1, 0, view); 
-				break; 
-			case KEY_DOWN : 
-				move_cursor(1, 0, view); 
-				break;
-			case KEY_RIGHT : 
-				move_cursor(0, 1, view); 
-				break;
-			case KEY_LEFT : 
-				move_cursor(0, -1, view);
-				break;
-			default : 
-				insert_view(ch, view);
-		}	
-		refresh();
+		
+		update_screen(view);
+
+		wget_wch(view->buffers[0]->win, &ch); // later it has to be the focused window and use constants instead of this mess so it can be changed easier
+		handle_input(ch, view);
 	}
-	getch();
 	endwin();
 
 	return 0;

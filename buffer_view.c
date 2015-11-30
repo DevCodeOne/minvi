@@ -16,6 +16,9 @@ buffer_view *create_buffer_view(int inital_size, int initial_line_size, WINDOW *
 	getmaxyx(view->win, max_y, max_x);
 	view->view_line = malloc(max_y * sizeof(int));
 	view->view_offset = malloc(max_y * sizeof(int));
+	view->mode = 0;
+	view->cursor_x = 0; 
+	view->cursor_y = 0;
 	build_view_offsets(0, view); 
 	update_win(0, max_y, view);
 	return view;
@@ -148,12 +151,14 @@ int delete_view(buffer_view *view) { // fix just because x is at 0 doesnt mean s
 			buffer_line *source = get_selected_line(view->buf); 
 			set_cursor(0, 0, PREVIOUS_LINE, view->buf);
 
-			int ret = append_line(source, view->buf); 
+			if (view->buf->cursor_y > 0) {
+				int ret = append_line(source, view->buf); 
 
-			if (ret == -1) return ret;
-			
-			set_cursor(0, 0, NEXT_LINE, view->buf);
-			return delete_line_view(view);
+				if (ret == -1) return ret;
+				set_cursor(0, 0, NEXT_LINE, view->buf);
+				return delete_line_view(view);
+			}
+			return 0;
 		}
 	}
 	return 0;
@@ -170,7 +175,7 @@ int delete_line_view(buffer_view *view) {
 	set_cursor(0, 0, PREVIOUS_LINE, view->buf);
 
 	if (ret == -1) return -1;
-
+	
 	set_cursor(0, 0, LINE_END, view->buf);
 	build_view_offsets(view->view_line[0], view);
 	align_cursor_view(view); 
@@ -218,6 +223,9 @@ void align_cursor_view(buffer_view *view) { // bug relating tabs is here
 			}
 		}
 		wmove(view->win, target_y, target_x);
+		view->cursor_x = target_x;
+		view->cursor_y = target_y;
+
 	} else { // TODO optimize scroll more than one line 
 		int row = 0;
 		if (cursor_y < view->view_line[0]) {
@@ -347,5 +355,59 @@ int get_charwidth(wchar_t value) {
 			break; // unnecessary
 		default : 
 			return 1;
+	}
+}
+
+int handle_input_view(wchar_t value, buffer_view *view) {
+	if (view->mode == NORMAL_MODE) {
+		switch(value) {
+			case L'i' : 
+				view->mode = INPUT_MODE;	
+				break;
+			case L'a' : 
+				view->mode = INPUT_MODE; // move cursor one to the right
+				break;
+			case L'v' : 
+				view->mode = VISUAL_MODE; // not yet implemented
+				break;
+			case L'r' : 
+				view->mode = REPLACE_MODE;
+				break;
+			case L'h' : // move left
+				move_cursor(0, -1, view);
+				break;
+			case L'l' : // move right 
+				move_cursor(0, 1, view);
+				break;
+			case L'j' : // move down 
+				move_cursor(1, 0, view);
+				break;
+			case L'k' : // move up 
+				move_cursor(-1, 0, view);
+				break;
+			case L'x' : // delete one char
+				move_cursor(0, 1, view); 
+				delete_view(view); 
+			break;
+		}
+	} else if (view->mode == INPUT_MODE) {
+		switch(value) {
+			case 27 : // escape
+				view->mode = NORMAL_MODE;
+				break;
+			case 10 : // enter (new line)
+				insert_line_view(view);
+				break; 
+			case 127 : // delete
+				delete_view(view); 
+				break;
+			default : 
+				insert_view(value, view);
+
+		}
+	} else if (view->mode == REPLACE_MODE) {
+		view->mode = NORMAL_MODE;
+	} else if (view->mode == VISUAL_MODE) {
+		view->mode = NORMAL_MODE;
 	}
 }

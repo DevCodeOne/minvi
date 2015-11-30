@@ -8,12 +8,21 @@
 
 #define TAB_WIDTH 3
 
+#define NORMAL_MODE			0x0
+#define INPUT_MODE			0x1
+#define VISUAL_MODE			0x2
+#define REPLACE_MODE 			0x3
+
 typedef struct { // standard functions for events like resized or something like that
 	WINDOW *win; 
 	buffer *buf;
 	int *view_line;
 	int *view_offset;
+	int mode;
+	int cursor_x, cursor_y;
 } buffer_view;
+
+int handle_input_view(wchar_t value, buffer_view *view);
 
 // editing functions 
 int insert_view(wchar_t value, buffer_view *view); 
