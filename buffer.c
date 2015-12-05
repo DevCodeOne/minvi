@@ -6,6 +6,9 @@
 
 #include "buffer.h"
 
+const wchar_t *abc = L"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ123456789_";
+const wchar_t *special_chars = L"!\"$%&/()=?`'*+-\'"
+
 buffer *create_buffer(int initial_size, int initial_line_size) {
 	buffer *buf = malloc(sizeof(buffer));
 	buf->cursor_x = 0; 
@@ -90,30 +93,51 @@ void clip(int *row, int *column, buffer *buf) {
 	if (*column < 0) *column = 0;
 }
 
+// origin indepenpent x and y so parameters for x and y
 int set_cursor(int row, int column, int origin, buffer *buf) {
 	int target_x = buf->cursor_x, target_y = buf->cursor_y;
-	if (origin == CUR) { // change to switch ?
-		target_y += row; 
-		target_x += column; 
-	} else if (origin == START) {
-		target_y = row; 
-		target_x = column; 
-	} else if (origin == END) { // this offset is not correct end of the file != end of the buffer fix it later
-		target_y = (buf->nol-1) + row; 
-		target_x = column;
-	} else if (origin == LINE_START) {
-		target_y = buf->cursor_y; 
-		target_x = 0;
-	} else if (origin == LINE_END) {
-		target_y = buf->cursor_y; 
-		target_x = buf->line[buf->cursor_y].cursor;
-	} else if (origin == NEXT_LINE) {
-		target_y = buf->cursor_y+1; 
-		target_x = 0;
-	} else if (origin == PREVIOUS_LINE) {
-		target_y = buf->cursor_y-1; 
-		target_x = 0;
+	
+	switch(origin >> 16) { // x
+		case CUR_X : 
+			target_x += column;
+			break; 
+		case LINE_START : 
+			target_x = column;
+			break; 
+		case LINE_END : 
+			target_x = buf->line[buf->cursor_y].cursor + column;
+			break;
+		case NEXT_WORD : 
+			// implement
+			break;
+		case PREVIOUS_WORD : 
+			// implement
+			break;
+		default : 
+			break;
+
 	}
+
+	switch(origin & ((1 << 16) - 1)) { // y 
+		case CUR_Y : 
+			target_y += row;
+			break;
+		case FIRST_LINE : 
+			target_y = row;
+			break; 
+		case LAST_LINE : 
+			target_y = buf->nol - 1 + row; // fix this last written line
+			break; 
+		case NEXT_LINE : 
+			target_y++;
+			break;
+		case PREVIOUS_LINE :
+			target_y--;
+			break;
+		default :
+			break;
+	}
+
 	if (is_in_bounds(target_y, target_x, buf)) {
 		buf->cursor_y = target_y; 
 		buf->cursor_x = target_x;
@@ -127,15 +151,46 @@ int set_cursor(int row, int column, int origin, buffer *buf) {
 	}
 }
 
+void next_word(int *x, int *y, buffer *buf) {
+	bool in_word = 0;
+	wchar_t *c = &buf->line[buf->cursor_y].line[buf->cursor_x];	
+	
+	if (*c == L' ' || *c == L'\t') { // not in word
+		wchar_t *next_word = wcspbrk(&buf->line[buf->cursor_y].line, abc); 
+		wchar_t *next_special_word = wcspbrk(&buf->line[buf->cursor_y].line, special_chars); 
+
+		if (next_word < next_special_word && next_word != NULL) { // jump to next word
+			
+		} else if (next_special_word != NULL) {
+
+		}
+	} else { // jump to first blank char then to the next char
+		wchar_t *occurence = wcschr(abc, *c); 
+		if (occurence != NULL) { // in abc
+					
+		} else {
+			
+		}
+	}
+}
+
+void previous_word(int *x, int *y, buffer *buf) {
+
+}
+
 int insert(wchar_t value, buffer *buf) {
 	buffer_line *line = &buf->line[buf->cursor_y];
-	if (line->size - line->cursor < 4) {
+
+	if (line->size - line->cursor < 2) {
 		int ret = resize_buffer_line(line->size * 2, line);
 		if (ret == -1) return ret;
 	}
+	
 	wchar_t *start = line->line + buf->cursor_x;
+
 	if (buf->cursor_x+1 < line->cursor) // no characters behind this one
 		wmemmove(start+1, start, line->cursor - (buf->cursor_x)); 
+	
 	line->line[buf->cursor_x++] = value;
 	line->cursor++;
 	return 0;
@@ -148,25 +203,31 @@ int replace(wchar_t value, buffer *buf) {
 
 int delete(buffer *buf) {
 	buffer_line *line = &buf->line[buf->cursor_y];
+	
 	if (line->cursor == 0) 
 		return -1; // nothing to remove
-	line->cursor--;
+
+
 	wchar_t *start = line->line + buf->cursor_x;
+
 	if (line->cursor > buf->cursor_x)
 		wmemmove(start, start+1, line->cursor - (buf->cursor_x)); 
-	if (buf->cursor_x > line->cursor)  
-		buf->cursor_x = line->cursor;
+	
+	line->cursor--;
 	return 0;
 }
 
 int insert_line(buffer *buf) { // error here
 	int old_nol = buf->nol; // if resized the other lines dont have to be moved they are empty
+
 	if (buf->line[buf->nol-1].cursor != 0 || buf->cursor_y >= buf->nol-1) { 
 		int ret = resize_buffer(buf->nol * 2, buf->initial_line_size, buf); 
 		if (ret == -1) return ret; 
 	}
+
 	buffer_line tmp = buf->line[buf->nol-1];
 	buffer_line *start = &buf->line[buf->cursor_y];
+	
 	memmove(start + 1, start, (old_nol - (buf->cursor_y + 1)) * sizeof(buffer_line)); 
 	buf->line[buf->cursor_y] = tmp;	
 	return 0;
@@ -174,8 +235,10 @@ int insert_line(buffer *buf) { // error here
 
 int delete_line(buffer *buf) {
 	if (buf->cursor_y == 0) return -1;
+
 	buffer_line tmp = buf->line[buf->cursor_y];
 	buffer_line *start = &buf->line[buf->cursor_y];
+	
 	memmove(start, start+1, (buf->nol - (buf->cursor_y + 1)) * sizeof(buffer_line));
 	memcpy(&buf->line[buf->nol-1], &tmp, sizeof(buffer_line));
 	buf->line[buf->nol-1].cursor = 0;
@@ -193,6 +256,7 @@ int copy_line(buffer_line *dst, buffer_line *src, int dst_offset, int src_offset
 		int ret = resize_buffer_line(dst->size + (len * 2), dst);
 		if (ret == -1) return ret;
 	}
+
 	wmemcpy(&dst->line[dst_offset], &src->line[src_offset], len);
 	dst->cursor += len;
 	return 0;
@@ -201,7 +265,9 @@ int copy_line(buffer_line *dst, buffer_line *src, int dst_offset, int src_offset
 int delete_range(buffer_line *line, int off, int len) {
 	if (line->cursor < off + len) 
 		return -1; // nothing to remove
+
 	wchar_t *start = &line->line[off];
+
 	wmemmove(start, start+len, len); 
 	line->cursor -= len;
 	return 0;

@@ -3,13 +3,26 @@
 #ifndef BUFFER_HEADER
 #define BUFFER_HEADER
 
-#define CUR 		0x0
-#define START 		0x1
-#define END 		0x2
-#define LINE_START 	0x3
-#define LINE_END 	0x4
-#define NEXT_LINE 	0x5
-#define PREVIOUS_LINE 	0x6 
+// new ones
+// x and y
+#define CUR 			CUR_X | CUR_Y	
+#define START			LINE_START | FIRST_LINE
+#define END			LINE_END | LAST_LINE
+
+// x only
+#define CUR_X			0x0 << 16
+#define LINE_START 		0x1 << 16
+#define LINE_END 		0x2 << 16
+#define NEXT_WORD 		0x3 << 16
+#define PREVIOUS_WORD		0x4 << 16
+
+// y only
+#define CUR_Y 			0x0
+#define FIRST_LINE 		0x1
+#define LAST_LINE		0x2
+#define NEXT_LINE		0x3
+#define PREVIOUS_LINE		0x4
+
 
 typedef struct {
 	int cursor; 

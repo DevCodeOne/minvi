@@ -35,9 +35,6 @@ int replace_view(wchar_t value, buffer_view *view);
 void update_win(int update_start_row, int update_end_row, buffer_view *view);
 void build_view_offsets(int start, buffer_view *view);
 void scroll_view(int start_row, buffer_view *view);
-int calculate_needed_rows(buffer_line *line, buffer_view * view);
-int calculate_needed_rows_from_columns(int columns, buffer_view *view);
-int calculate_needed_columns(buffer_line *line);
 int get_charwidth(wchar_t ch);
 
 // navigation functions

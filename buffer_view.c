@@ -6,6 +6,7 @@
 
 #include "buffer_view.h"
 #include "buffer.h"
+#include "input.h"
 
 buffer_view *create_buffer_view(int inital_size, int initial_line_size, WINDOW *target) {
 	int max_y, max_x;
@@ -45,6 +46,7 @@ int resize_buffer_view(buffer_view *view) {
 	return 0;
 }
 
+// clip so line is not an invalid number line >= 0 && line < nol
 void build_view_offsets(int start, buffer_view *view) {
 	int max_y, max_x; 
 
@@ -62,9 +64,8 @@ void build_view_offsets(int start, buffer_view *view) {
 			i++;
 
 			for (int j = 0; j < selected_line->cursor; j++) {
-				int char_width = get_charwidth(selected_line->line[j]);
 
-				columns += char_width;
+				columns += get_charwidth(selected_line->line[j]);
 				if (columns > max_x) {
 					columns = 0; 
 					view->view_offset[i] = j--; // one char too much jump back
@@ -87,12 +88,12 @@ int insert_view(wchar_t value, buffer_view *view) { // bug with tabs not jumping
 
 	getyx(view->win, y, x); 
 	getmaxyx(view->win, max_y, max_x);
-
 	max_x--;
+	
 	int ret = insert(value, view->buf);
 	if (ret == -1) return ret;
 
-	if (x+1 >= max_x) { // next row is stil this line 
+	if (x + get_charwidth(value) >= max_x) { // next row is stil this line 
 		update_complete_screen = 1;  	
 		build_view_offsets(view->view_offset[0], view);
 	}
@@ -144,22 +145,18 @@ int delete_view(buffer_view *view) { // fix just because x is at 0 doesnt mean s
 		build_view_offsets(view->view_line[0], view); 
 		align_cursor_view(view);
 		update_win(y-1, max_y, view);
-	} else { 
-		if (get_selected_line(view->buf)->cursor == 0)
-			return delete_line_view(view);	
-		else { // append rest of the line to the previous line
-			buffer_line *source = get_selected_line(view->buf); 
-			set_cursor(0, 0, PREVIOUS_LINE, view->buf);
+	} else if (get_selected_line(view->buf)->cursor == 0) {
+		return delete_line_view(view);	
+	} else if (view->buf->cursor_y > 0) { // append rest of the line to the previous line
 
-			if (view->buf->cursor_y > 0) {
-				int ret = append_line(source, view->buf); 
+		buffer_line *source = get_selected_line(view->buf); 
+		set_cursor(0, 0, PREVIOUS_LINE, view->buf);
 
-				if (ret == -1) return ret;
-				set_cursor(0, 0, NEXT_LINE, view->buf);
-				return delete_line_view(view);
-			}
-			return 0;
-		}
+		int ret = append_line(source, view->buf); 
+
+		if (ret == -1) return ret;
+		set_cursor(0, 0, NEXT_LINE, view->buf);
+		return delete_line_view(view);
 	}
 	return 0;
 }
@@ -172,17 +169,20 @@ int delete_line_view(buffer_view *view) {
 	getmaxyx(view->win, max_y, max_x); 
 
 	int ret = delete_line(view->buf); 
+
 	set_cursor(0, 0, PREVIOUS_LINE, view->buf);
 
 	if (ret == -1) return -1;
 	
 	set_cursor(0, 0, LINE_END, view->buf);
+
 	build_view_offsets(view->view_line[0], view);
 	align_cursor_view(view); 
 	update_win(y-1, max_y, view);
+	return 0;
 }
 
-void align_cursor_view(buffer_view *view) { // bug relating tabs is here
+void align_cursor_view(buffer_view *view) { 
 	int cursor_y, cursor_x; 
 	int max_y, max_x;
 	int target_y, target_x; 
@@ -204,14 +204,8 @@ void align_cursor_view(buffer_view *view) { // bug relating tabs is here
 				int pos = view->view_offset[i];
 
 				for (target_x = 0; pos < cursor_x; ){
-					int char_width = 0;
-					switch(line->line[pos]) {
-						case L'\t' :
-							char_width = TAB_WIDTH; 
-							break;
-						default : 
-						 	char_width = 1;	
-					}
+					int char_width = get_charwidth(line->line[pos]);
+					
 					if (target_x + char_width >= max_x) {
 						break;
 					} else {
@@ -241,15 +235,19 @@ void align_cursor_view(buffer_view *view) { // bug relating tabs is here
 	}
 }
 
+// new method with offset ( next_word usw)
 int move_cursor(int rows, int cols, buffer_view *view) {
 	int ret = set_cursor(rows, cols, CUR, view->buf); 
-	if (ret == -1) return -1;
+
+	if (ret == -1) return ret;
+
 	align_cursor_view(view);
 	return 0;
 }
 
 void scroll_view(int start_row, buffer_view *view) {
 	int max_y, max_x; 
+
 	getmaxyx(view->win, max_y, max_x);
 	build_view_offsets(start_row, view);
 	update_win(0, max_y, view);
@@ -262,8 +260,10 @@ void update_win(int update_start_row, int update_end_row, buffer_view *view) {
 	int y, x;
 	int i, j;
 	cchar_t tmp;
+
 	tmp.chars[1] = L'\0';
 	tmp.attr = 0;
+
 	if (update_start_row < 0) update_start_row = 0;
 	
 	getmaxyx(view->win, max_y, max_x);
@@ -271,6 +271,7 @@ void update_win(int update_start_row, int update_end_row, buffer_view *view) {
 	wmove(view->win, update_start_row, 0);
 
 	max_x--; // otherwise the placement of the cursor and some other things is fucked up
+
 	for (i = update_start_row; i < max_y && i < update_end_row; i++) {
 		if (view->view_line[i] < view->buf->nol) {
 			buffer_line *selected_line = &view->buf->line[view->view_line[i]]; 
@@ -281,15 +282,15 @@ void update_win(int update_start_row, int update_end_row, buffer_view *view) {
 				switch(c) {
 					case L'\t' : 
 						tmp.chars[0] = L' ';
-						for (int k = 0; k < TAB_WIDTH; k++) 
+						for (int k = 0; k < TAB_WIDTH && j+k < max_x; k++) { // don't move past end of line
 							wadd_wch(view->win, &tmp);
-						j += TAB_WIDTH;
+						}
 						break; 
 					default : 
 						tmp.chars[0] = c; 
 						wadd_wch(view->win, &tmp);	
-						j++;
 				}
+				j += get_charwidth(c);
 			}
 
 			if (selected_line->cursor == 0) { 
@@ -316,43 +317,10 @@ void free_buffer_view(buffer_view *view) {
 	}
 }
 
-int calculate_needed_rows(buffer_line *line, buffer_view *view) { // maybe return struct with offsets
-	int columns = calculate_needed_columns(line); 
-	
-	return calculate_needed_rows_from_columns(columns, view);
-}
-
-int calculate_needed_rows_from_columns(int columns, buffer_view *view) {
-	int max_y, max_x;	
-
-	getmaxyx(view->win, max_y, max_x); 
-	max_x--;
-
-	if (columns < max_x) 
-		return 1;
-	return (columns / max_x) + ((!(columns % max_x == 0)) ? 1 : 0);
-}
-
-int calculate_needed_columns(buffer_line *line) {
-	int columns = 0;
-	for (int i = 0; i < line->cursor; i++) {
-		switch(line->line[i]) {
-			case L'\t' : 
-				columns += TAB_WIDTH;
-				break;
-			default : 
-				columns++;
-		}
-
-	}
-	return columns;
-}
-
 int get_charwidth(wchar_t value) {
 	switch(value) {
 		case L'\t' : 
 			return TAB_WIDTH; 
-			break; // unnecessary
 		default : 
 			return 1;
 	}
@@ -390,15 +358,15 @@ int handle_input_view(wchar_t value, buffer_view *view) {
 				delete_view(view); 
 			break;
 		}
-	} else if (view->mode == INPUT_MODE) {
+	} else if (view->mode == INPUT_MODE || view->mode == REPLACE_MODE) {
 		switch(value) {
-			case 27 : // escape
+			case ESCAPE : 
 				view->mode = NORMAL_MODE;
 				break;
-			case 10 : // enter (new line)
+			case NEW_LINE : 
 				insert_line_view(view);
 				break; 
-			case 127 : // delete
+			case BACKSPACE : 
 				delete_view(view); 
 				break;
 			default : 
@@ -411,3 +379,4 @@ int handle_input_view(wchar_t value, buffer_view *view) {
 		view->mode = NORMAL_MODE;
 	}
 }
+

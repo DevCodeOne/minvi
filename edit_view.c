@@ -9,7 +9,7 @@ edit_view *create_edit_view(int inital_size, int initial_line_size) {
 	int max_y, max_x; 
 	getmaxyx(stdscr, max_y, max_x);
 
-	WINDOW *buffer_window = newwin(max_y - 2, max_x, 0, 0);
+	WINDOW *buffer_window = newwin(max_y - 1, max_x, 0, 0);
 	edit_view *view = malloc(sizeof(edit_view));
 	view->buffers = malloc(MAX_SPLITS * sizeof(buffer_view *));
 	view->buffers[0] = create_buffer_view(inital_size, initial_line_size, buffer_window);
@@ -33,6 +33,16 @@ int handle_input(wchar_t input, edit_view *view) {
 	}
 
 	wclear(view->status_line);
+	return ret;
+}
+
+void update_screen(edit_view *view) {
+	buffer_view *focused_view = view->buffers[view->focus];
+	for (int i = 0; i < MAX_SPLITS; i++) {
+		if (view->buffers[i] != NULL) {
+			wrefresh(view->buffers[i]->win);
+		}
+	}
 
 	char *mode = "NORMAL";
 	switch(focused_view->mode) {
@@ -49,18 +59,10 @@ int handle_input(wchar_t input, edit_view *view) {
 			mode = "REPLACE";
 			break;
 	}
+
 	wprintw(view->status_line, "%s ", mode);
 	wmove(focused_view->win, focused_view->cursor_y, focused_view->cursor_x); 
-	return ret;
-}
 
-void update_screen(edit_view *view) {
-	buffer_view *focused_view = view->buffers[view->focus];
-	for (int i = 0; i < MAX_SPLITS; i++) {
-		if (view->buffers[i] != NULL) {
-			wrefresh(view->buffers[i]->win);
-		}
-	}
 	wrefresh(view->status_line);
 	wmove(focused_view->win, focused_view->cursor_y, focused_view->cursor_x); 
 }
