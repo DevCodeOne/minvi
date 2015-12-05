@@ -111,15 +111,15 @@ int insert_line_view(buffer_view *view) {
 	getmaxyx(view->win, max_y, max_x); 
 
 	int old_cursor_x = view->buf->cursor_x;
-	buffer_line *previous_line = get_selected_line(view->buf);	
 
 	// insert rest of the previous line in the next line
-	set_cursor(0, 0, NEXT_LINE, view->buf);
+	set_cursor(0, 0, LINE_START | NEXT_LINE, view->buf);
 	
 	int ret = insert_line(view->buf); 
 	
 	if (ret == -1) return -1;
 	
+	buffer_line *previous_line = &view->buf->line[view->buf->cursor_y-1];	
 	buffer_line *sel_line = get_selected_line(view->buf);
 	copy_line(sel_line, previous_line, 0, old_cursor_x, previous_line->cursor - old_cursor_x); 
 	delete_range(previous_line, old_cursor_x, previous_line->cursor - old_cursor_x); 
@@ -235,12 +235,8 @@ void align_cursor_view(buffer_view *view) {
 	}
 }
 
-// new method with offset ( next_word usw)
-int move_cursor(int rows, int cols, buffer_view *view) {
-	int ret = set_cursor(rows, cols, CUR, view->buf); 
-
-	if (ret == -1) return ret;
-
+int move_cursor(int row, int column, int origin, buffer_view *view) {
+	set_cursor(row, column, origin, view->buf); 
 	align_cursor_view(view);
 	return 0;
 }
@@ -335,6 +331,26 @@ int handle_input_view(wchar_t value, buffer_view *view) {
 			case L'a' : 
 				view->mode = INPUT_MODE; // move cursor one to the right
 				break;
+			case L'A' : 
+				move_cursor(0, 0, LINE_END, view);
+				view->mode = INPUT_MODE;
+				break;
+			case L'0' : 
+				move_cursor(0, 0, LINE_START, view);
+				break;
+			case L'e' : 
+				move_cursor(0, 0, LINE_END, view);
+				break;
+			case L'o' : 
+				move_cursor(0, 0, LINE_END, view);
+				insert_line_view(view);
+				view->mode = INPUT_MODE;
+				break;
+			case L'O' : 
+				move_cursor(0, 0, LINE_END | PREVIOUS_LINE, view);
+				insert_line_view(view);
+				view->mode = INPUT_MODE;
+				break;
 			case L'v' : 
 				view->mode = VISUAL_MODE; // not yet implemented
 				break;
@@ -342,19 +358,19 @@ int handle_input_view(wchar_t value, buffer_view *view) {
 				view->mode = REPLACE_MODE;
 				break;
 			case L'h' : // move left
-				move_cursor(0, -1, view);
+				move_cursor(0, -1, CUR, view);
 				break;
 			case L'l' : // move right 
-				move_cursor(0, 1, view);
+				move_cursor(0, 1, CUR, view);
 				break;
 			case L'j' : // move down 
-				move_cursor(1, 0, view);
+				move_cursor(0, 0, NEXT_LINE, view);
 				break;
 			case L'k' : // move up 
-				move_cursor(-1, 0, view);
+				move_cursor(0, 0, PREVIOUS_LINE, view);
 				break;
 			case L'x' : // delete one char
-				move_cursor(0, 1, view); 
+				move_cursor(0, 1, CUR, view); 
 				delete_view(view); 
 			break;
 		}

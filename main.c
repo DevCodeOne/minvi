@@ -16,7 +16,7 @@ int main(int argc, char *argv[]) {
 	noecho();
 	keypad(stdscr, TRUE);
 	set_tabsize(3); // init somewhere different later
-	edit_view *view = create_edit_view(16, 8);
+	edit_view *view = create_edit_view(2, 8);
 	
 	while(!quit) {
 		wchar_t ch = L'\0';

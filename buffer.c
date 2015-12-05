@@ -7,7 +7,7 @@
 #include "buffer.h"
 
 const wchar_t *abc = L"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ123456789_";
-const wchar_t *special_chars = L"!\"$%&/()=?`'*+-\'"
+const wchar_t *special_chars = L"!\"$%&/()=?`'*+-\'";
 
 buffer *create_buffer(int initial_size, int initial_line_size) {
 	buffer *buf = malloc(sizeof(buffer));
@@ -96,29 +96,8 @@ void clip(int *row, int *column, buffer *buf) {
 // origin indepenpent x and y so parameters for x and y
 int set_cursor(int row, int column, int origin, buffer *buf) {
 	int target_x = buf->cursor_x, target_y = buf->cursor_y;
-	
-	switch(origin >> 16) { // x
-		case CUR_X : 
-			target_x += column;
-			break; 
-		case LINE_START : 
-			target_x = column;
-			break; 
-		case LINE_END : 
-			target_x = buf->line[buf->cursor_y].cursor + column;
-			break;
-		case NEXT_WORD : 
-			// implement
-			break;
-		case PREVIOUS_WORD : 
-			// implement
-			break;
-		default : 
-			break;
 
-	}
-
-	switch(origin & ((1 << 16) - 1)) { // y 
+	switch(origin & 0xFFFF) { // y 
 		case CUR_Y : 
 			target_y += row;
 			break;
@@ -140,6 +119,35 @@ int set_cursor(int row, int column, int origin, buffer *buf) {
 
 	if (is_in_bounds(target_y, target_x, buf)) {
 		buf->cursor_y = target_y; 
+	} else { 
+		// invalid cursor location -> clipped
+		clip(&target_y, &target_x, buf);
+		buf->cursor_y = target_y; 
+	}
+
+	switch(origin & (0xFFFF << 16)) { // x
+		case CUR_X : 
+			target_x += column;
+			break; 
+		case LINE_START : 
+			target_x = column;
+			break; 
+		case LINE_END : 
+			target_x = buf->line[buf->cursor_y].cursor + column;
+			break;
+		case NEXT_WORD : 
+			// implement
+			break;
+		case PREVIOUS_WORD : 
+			// implement
+			break;
+		default : 
+			break;
+
+	}
+
+	if (is_in_bounds(target_y, target_x, buf)) {
+		buf->cursor_y = target_y; 
 		buf->cursor_x = target_x;
 		return 0; 
 	} else { 
@@ -156,8 +164,8 @@ void next_word(int *x, int *y, buffer *buf) {
 	wchar_t *c = &buf->line[buf->cursor_y].line[buf->cursor_x];	
 	
 	if (*c == L' ' || *c == L'\t') { // not in word
-		wchar_t *next_word = wcspbrk(&buf->line[buf->cursor_y].line, abc); 
-		wchar_t *next_special_word = wcspbrk(&buf->line[buf->cursor_y].line, special_chars); 
+		wchar_t *next_word = wcspbrk(buf->line[buf->cursor_y].line, abc); 
+		wchar_t *next_special_word = wcspbrk(buf->line[buf->cursor_y].line, special_chars); 
 
 		if (next_word < next_special_word && next_word != NULL) { // jump to next word
 			
@@ -218,9 +226,7 @@ int delete(buffer *buf) {
 }
 
 int insert_line(buffer *buf) { // error here
-	int old_nol = buf->nol; // if resized the other lines dont have to be moved they are empty
-
-	if (buf->line[buf->nol-1].cursor != 0 || buf->cursor_y >= buf->nol-1) { 
+	if (buf->line[buf->nol-1].cursor != 0 || buf->cursor_y >= buf->nol-2) { 
 		int ret = resize_buffer(buf->nol * 2, buf->initial_line_size, buf); 
 		if (ret == -1) return ret; 
 	}
@@ -228,7 +234,7 @@ int insert_line(buffer *buf) { // error here
 	buffer_line tmp = buf->line[buf->nol-1];
 	buffer_line *start = &buf->line[buf->cursor_y];
 	
-	memmove(start + 1, start, (old_nol - (buf->cursor_y + 1)) * sizeof(buffer_line)); 
+	memmove(start + 1, start, (buf->nol - (buf->cursor_y + 1)) * sizeof(buffer_line)); 
 	buf->line[buf->cursor_y] = tmp;	
 	return 0;
 }

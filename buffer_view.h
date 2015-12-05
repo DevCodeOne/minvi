@@ -38,7 +38,7 @@ void scroll_view(int start_row, buffer_view *view);
 int get_charwidth(wchar_t ch);
 
 // navigation functions
-int move_cursor(int rows, int cols, buffer_view *view);
+int move_cursor(int rows, int column, int origin, buffer_view *view);
 void align_cursor_view(buffer_view *view);
 
 buffer_view *create_buffer_view(int inital_size, int initial_line_size, WINDOW *target); 
